@@ -2,22 +2,26 @@ import logo from './logo.png';
 import './App.css';
 import { useState } from 'react';
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://localhost:5000';
+
 function App() {
   const [formData, setFormData] = useState({
     localSalesCount: '',
     foreignSalesCount: '',
     averageSaleAmount: ''
   });
-  
+
   const [results, setResults] = useState({
     avalphaTechnologiesCommission: 0,
     competitorCommission: 0
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    if (error) setError(null);
     setFormData(prev => ({
       ...prev,
       [name]: value
@@ -27,24 +31,52 @@ function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // TODO: Replace with actual API call to backend
-    setTimeout(() => {
-      // Mock calculation for now
-      const localCommission = parseFloat(formData.localSalesCount) * parseFloat(formData.averageSaleAmount) * 0.20;
-      const foreignCommission = parseFloat(formData.foreignSalesCount) * parseFloat(formData.averageSaleAmount) * 0.35;
-      const avalphaTechnologiesTotal = localCommission + foreignCommission;
-      
-      const competitorLocal = parseFloat(formData.localSalesCount) * parseFloat(formData.averageSaleAmount) * 0.02;
-      const competitorForeign = parseFloat(formData.foreignSalesCount) * parseFloat(formData.averageSaleAmount) * 0.0755;
-      const competitorTotal = competitorLocal + competitorForeign;
-      
-      setResults({
-        avalphaTechnologiesCommission: avalphaTechnologiesTotal.toFixed(2),
-        competitorCommission: competitorTotal.toFixed(2)
-      });
+    setError(null);
+
+    const localCount = parseInt(formData.localSalesCount, 10);
+    const foreignCount = parseInt(formData.foreignSalesCount, 10);
+    const avgAmount = parseFloat(formData.averageSaleAmount);
+
+    if (localCount < 0 || foreignCount < 0 || avgAmount < 0) {
+      setError('All values must be zero or greater.');
       setIsLoading(false);
-    }, 1000);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/Commision`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          localSalesCount: localCount,
+          foreignSalesCount: foreignCount,
+          averageSaleAmount: avgAmount
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || `Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      setResults({
+        avalphaTechnologiesCommission: data.avalphaTechnologiesCommissionAmount.toFixed(2),
+        competitorCommission: data.competitorCommissionAmount.toFixed(2)
+      });
+    } catch (err) {
+      console.error('API Error:', err);
+      if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+        setError('Unable to connect to the server. Please ensure the backend is running.');
+      } else {
+        setError(err.message || 'An unexpected error occurred. Please try again.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -64,10 +96,11 @@ function App() {
             <form onSubmit={handleSubmit} className="calculator-form">
               <div className="form-group">
                 <label htmlFor="localSalesCount">Local Sales Count</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   id="localSalesCount"
                   name="localSalesCount"
+                  min="0"
                   value={formData.localSalesCount}
                   onChange={handleInputChange}
                   placeholder="Enter number of local sales"
@@ -77,22 +110,24 @@ function App() {
 
               <div className="form-group">
                 <label htmlFor="foreignSalesCount">Foreign Sales Count</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   id="foreignSalesCount"
                   name="foreignSalesCount"
+                  min="0"
                   value={formData.foreignSalesCount}
                   onChange={handleInputChange}
                   placeholder="Enter number of foreign sales"
                   required
                 />
               </div>
-              
+
               <div className="form-group">
                 <label htmlFor="averageSaleAmount">Average Sale Amount (£)</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   step="0.01"
+                  min="0"
                   id="averageSaleAmount"
                   name="averageSaleAmount"
                   value={formData.averageSaleAmount}
@@ -102,13 +137,20 @@ function App() {
                 />
               </div>
 
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 className={`calculate-btn ${isLoading ? 'loading' : ''}`}
                 disabled={isLoading}
               >
                 {isLoading ? 'Calculating...' : 'Calculate Commission'}
               </button>
+
+              {error && (
+                <div className="error-message">
+                  <span className="error-icon">⚠️</span>
+                  {error}
+                </div>
+              )}
             </form>
           </div>
 
@@ -124,7 +166,7 @@ function App() {
                   £{results.avalphaTechnologiesCommission}
                 </div>
               </div>
-              
+
               <div className="result-card competitor-card">
                 <div className="result-header">
                   <h4>Competitor</h4>
@@ -135,11 +177,11 @@ function App() {
                 </div>
               </div>
             </div>
-            
+
             {results.avalphaTechnologiesCommission > 0 && (
               <div className="advantage-indicator">
                 <p className="advantage-text">
-                  Avalpha Technologies advantage: 
+                  Avalpha Technologies advantage:
                   <strong> £{(results.avalphaTechnologiesCommission - results.competitorCommission).toFixed(2)}</strong>
                 </p>
               </div>
